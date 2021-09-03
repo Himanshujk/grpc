@@ -12,7 +12,6 @@ import (
 
 type chatServiceServer struct {
 	chatpb.UnimplementedChatServiceServer
-	//mu      sync.Mutex
 	channel map[string][]chan *chatpb.Message
 }
 
