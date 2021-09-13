@@ -18,8 +18,10 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ChatServiceClient interface {
+	Connected(ctx context.Context, in *Channel, opts ...grpc.CallOption) (*MessageAck, error)
 	JoinChannel(ctx context.Context, in *Channel, opts ...grpc.CallOption) (ChatService_JoinChannelClient, error)
 	SendMessage(ctx context.Context, opts ...grpc.CallOption) (ChatService_SendMessageClient, error)
+	SendMessagetoEveryone(ctx context.Context, opts ...grpc.CallOption) (ChatService_SendMessagetoEveryoneClient, error)
 }
 
 type chatServiceClient struct {
@@ -28,6 +30,15 @@ type chatServiceClient struct {
 
 func NewChatServiceClient(cc grpc.ClientConnInterface) ChatServiceClient {
 	return &chatServiceClient{cc}
+}
+
+func (c *chatServiceClient) Connected(ctx context.Context, in *Channel, opts ...grpc.CallOption) (*MessageAck, error) {
+	out := new(MessageAck)
+	err := c.cc.Invoke(ctx, "/chatpb.ChatService/Connected", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *chatServiceClient) JoinChannel(ctx context.Context, in *Channel, opts ...grpc.CallOption) (ChatService_JoinChannelClient, error) {
@@ -96,12 +107,45 @@ func (x *chatServiceSendMessageClient) CloseAndRecv() (*MessageAck, error) {
 	return m, nil
 }
 
+func (c *chatServiceClient) SendMessagetoEveryone(ctx context.Context, opts ...grpc.CallOption) (ChatService_SendMessagetoEveryoneClient, error) {
+	stream, err := c.cc.NewStream(ctx, &ChatService_ServiceDesc.Streams[2], "/chatpb.ChatService/SendMessagetoEveryone", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &chatServiceSendMessagetoEveryoneClient{stream}
+	return x, nil
+}
+
+type ChatService_SendMessagetoEveryoneClient interface {
+	Send(*Message) error
+	Recv() (*Message, error)
+	grpc.ClientStream
+}
+
+type chatServiceSendMessagetoEveryoneClient struct {
+	grpc.ClientStream
+}
+
+func (x *chatServiceSendMessagetoEveryoneClient) Send(m *Message) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *chatServiceSendMessagetoEveryoneClient) Recv() (*Message, error) {
+	m := new(Message)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // ChatServiceServer is the server API for ChatService service.
 // All implementations must embed UnimplementedChatServiceServer
 // for forward compatibility
 type ChatServiceServer interface {
+	Connected(context.Context, *Channel) (*MessageAck, error)
 	JoinChannel(*Channel, ChatService_JoinChannelServer) error
 	SendMessage(ChatService_SendMessageServer) error
+	SendMessagetoEveryone(ChatService_SendMessagetoEveryoneServer) error
 	mustEmbedUnimplementedChatServiceServer()
 }
 
@@ -109,11 +153,17 @@ type ChatServiceServer interface {
 type UnimplementedChatServiceServer struct {
 }
 
+func (UnimplementedChatServiceServer) Connected(context.Context, *Channel) (*MessageAck, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Connected not implemented")
+}
 func (UnimplementedChatServiceServer) JoinChannel(*Channel, ChatService_JoinChannelServer) error {
 	return status.Errorf(codes.Unimplemented, "method JoinChannel not implemented")
 }
 func (UnimplementedChatServiceServer) SendMessage(ChatService_SendMessageServer) error {
 	return status.Errorf(codes.Unimplemented, "method SendMessage not implemented")
+}
+func (UnimplementedChatServiceServer) SendMessagetoEveryone(ChatService_SendMessagetoEveryoneServer) error {
+	return status.Errorf(codes.Unimplemented, "method SendMessagetoEveryone not implemented")
 }
 func (UnimplementedChatServiceServer) mustEmbedUnimplementedChatServiceServer() {}
 
@@ -126,6 +176,24 @@ type UnsafeChatServiceServer interface {
 
 func RegisterChatServiceServer(s grpc.ServiceRegistrar, srv ChatServiceServer) {
 	s.RegisterService(&ChatService_ServiceDesc, srv)
+}
+
+func _ChatService_Connected_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Channel)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChatServiceServer).Connected(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/chatpb.ChatService/Connected",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChatServiceServer).Connected(ctx, req.(*Channel))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _ChatService_JoinChannel_Handler(srv interface{}, stream grpc.ServerStream) error {
@@ -175,13 +243,44 @@ func (x *chatServiceSendMessageServer) Recv() (*Message, error) {
 	return m, nil
 }
 
+func _ChatService_SendMessagetoEveryone_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ChatServiceServer).SendMessagetoEveryone(&chatServiceSendMessagetoEveryoneServer{stream})
+}
+
+type ChatService_SendMessagetoEveryoneServer interface {
+	Send(*Message) error
+	Recv() (*Message, error)
+	grpc.ServerStream
+}
+
+type chatServiceSendMessagetoEveryoneServer struct {
+	grpc.ServerStream
+}
+
+func (x *chatServiceSendMessagetoEveryoneServer) Send(m *Message) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *chatServiceSendMessagetoEveryoneServer) Recv() (*Message, error) {
+	m := new(Message)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // ChatService_ServiceDesc is the grpc.ServiceDesc for ChatService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var ChatService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "chatpb.ChatService",
 	HandlerType: (*ChatServiceServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Connected",
+			Handler:    _ChatService_Connected_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "JoinChannel",
@@ -191,6 +290,12 @@ var ChatService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "SendMessage",
 			Handler:       _ChatService_SendMessage_Handler,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "SendMessagetoEveryone",
+			Handler:       _ChatService_SendMessagetoEveryone_Handler,
+			ServerStreams: true,
 			ClientStreams: true,
 		},
 	},

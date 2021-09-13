@@ -5,8 +5,10 @@ option go_package = "./chatpb";
 package chatpb;
 
 service ChatService {
-    rpc JoinChannel(Channel) returns (stream Message) {}
-    rpc SendMessage(stream Message) returns (MessageAck) {}
+    rpc Connected(Channel)returns(MessageAck){}//unary
+    rpc JoinChannel(Channel) returns (stream Message) {}//server streaming
+    rpc SendMessage(stream Message) returns (MessageAck) {}//client streaming
+    rpc SendMessagetoEveryone(stream Message)returns(stream Message){}//bidi
 }
 
 message Channel {

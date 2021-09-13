@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -13,6 +14,14 @@ import (
 type chatServiceServer struct {
 	chatpb.UnimplementedChatServiceServer
 	channel map[string][]chan *chatpb.Message
+}
+
+func (s *chatServiceServer) Connected(ctx context.Context, ch *chatpb.Channel) (*chatpb.MessageAck, error) {
+	msg := chatpb.MessageAck{
+		Status: "Connected",
+	}
+	fmt.Println(ch.SendersName+" got connected with channel:", ch.Name)
+	return &msg, nil
 }
 
 func (s *chatServiceServer) JoinChannel(ch *chatpb.Channel, msgStream chatpb.ChatService_JoinChannelServer) error {
@@ -55,7 +64,20 @@ func (s *chatServiceServer) SendMessage(msgStream chatpb.ChatService_SendMessage
 
 	return nil
 }
+func (s *chatServiceServer) SendMessagetoEveryone(msgStream chatpb.ChatService_SendMessagetoEveryoneServer) error {
+	msg, err := msgStream.Recv()
 
+	if err == io.EOF {
+		return nil
+	}
+
+	if err != nil {
+		return err
+	}
+	fmt.Println(msg.Sender + " from channel:" + msg.Channel.Name + " sended : " + msg.Message)
+
+	return nil
+}
 func newServer() *chatServiceServer {
 	s := &chatServiceServer{
 		channel: make(map[string][]chan *chatpb.Message),
